@@ -1,6 +1,6 @@
 import os
 import typing
-
+import mysql.connector
 from pydantic_settings import BaseSettings
 
 
@@ -16,17 +16,18 @@ class Settings(BaseSettings):
     CORS_ALLOW_HEADERS: typing.List = ["*"]
 
     DEBUG: bool = True
-    DB_URL: str = "sqlite://db.sqlite3"
+    # mysql连接
+    DB_URL: str = "mysql://root:123456@localhost:3306/api"
     DB_CONNECTIONS: dict = {
         "default": {
-            "engine": "tortoise.backends.sqlite",
+            "engine": "tortoise.backends.mysql",
             "db_url": DB_URL,
             "credentials": {
-                "host": "",
-                "port": "",
-                "user": "",
-                "password": "",
-                "database": "",
+                "host": "localhost",
+                "port": 3306,
+                "user": "root",
+                "password": "123456",
+                "database": "api",
             },
         },
     }
@@ -39,15 +40,24 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 24 * 7  # 7 day
     TORTOISE_ORM: dict = {
         "connections": {
-            "sqlite": {
-                "engine": "tortoise.backends.sqlite",
-                "credentials": {"file_path": f"{BASE_DIR}/db.sqlite3"},
+            "default": {
+                "engine": "tortoise.backends.mysql",
+                "credentials": {
+                    "host": "localhost",
+                    "port": 3306,
+                    "user": "root",
+                    "password": "123456",
+                    "database": "api",
+                    "minsize": 1,
+                    "maxsize": 5,
+                    "echo": True
+                },
             }
         },
         "apps": {
             "models": {
                 "models": ["app.models"],
-                "default_connection": "sqlite",
+                "default_connection": "default",
             },
         },
         "use_tz": False,
@@ -55,5 +65,5 @@ class Settings(BaseSettings):
     }
     DATETIME_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 
-
+# Instantiate the settings
 settings = Settings()

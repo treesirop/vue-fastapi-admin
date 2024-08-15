@@ -23,7 +23,7 @@ class UserCreate(BaseModel):
     is_active: Optional[bool] = True
     is_superuser: Optional[bool] = False
     role_ids: Optional[List[int]] = []
-    dept_id: Optional[int] = Field(0, description="部门ID")
+    # dept_id: Optional[int] = Field(0, description="部门ID")
 
     def create_dict(self):
         return self.model_dump(exclude_unset=True, exclude={"role_ids"})
@@ -36,7 +36,7 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = True
     is_superuser: Optional[bool] = False
     role_ids: Optional[List[int]] = []
-    dept_id: Optional[int] = 0
+    # dept_id: Optional[int] = 0
 
 
 class UpdatePassword(BaseModel):

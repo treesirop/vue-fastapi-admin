@@ -5,38 +5,6 @@ from app.schemas.menus import MenuType
 from .base import BaseModel, TimestampMixin
 from .enums import MethodType
 
-
-class User(BaseModel, TimestampMixin):
-    username = fields.CharField(max_length=20, unique=True, description="用户名称", index=True)
-    alias = fields.CharField(max_length=30, null=True, description="姓名", index=True)
-    email = fields.CharField(max_length=255, unique=True, description="邮箱", index=True)
-    phone = fields.CharField(max_length=20, null=True, description="电话", index=True)
-    password = fields.CharField(max_length=128, null=True, description="密码")
-    is_active = fields.BooleanField(default=True, description="是否激活", index=True)
-    is_superuser = fields.BooleanField(default=False, description="是否为超级管理员", index=True)
-    last_login = fields.DatetimeField(null=True, description="最后登录时间", index=True)
-    roles = fields.ManyToManyField("models.Role", related_name="user_roles")
-    dept_id = fields.IntField(null=True, description="部门ID", index=True)
-
-    class Meta:
-        table = "user"
-
-    class PydanticMeta:
-        # todo
-        # computed = ["full_name"]
-        ...
-
-
-class Role(BaseModel, TimestampMixin):
-    name = fields.CharField(max_length=20, unique=True, description="角色名称", index=True)
-    desc = fields.CharField(max_length=500, null=True, blank=True, description="角色描述")
-    menus = fields.ManyToManyField("models.Menu", related_name="role_menus")
-    apis = fields.ManyToManyField("models.Api", related_name="role_apis")
-
-    class Meta:
-        table = "role"
-
-
 class Api(BaseModel, TimestampMixin):
     path = fields.CharField(max_length=100, description="API路径", index=True)
     method = fields.CharEnumField(MethodType, description="请求方法", index=True)
@@ -63,17 +31,74 @@ class Menu(BaseModel, TimestampMixin):
     class Meta:
         table = "menu"
 
+class Role(BaseModel, TimestampMixin):
+    name = fields.CharField(max_length=20, unique=True, description="角色名称", index=True)
+    desc = fields.CharField(max_length=500, null=True, blank=True, description="角色描述")
+    menus = fields.ManyToManyField("models.Menu", related_name="role_menus")
+    apis = fields.ManyToManyField("models.Api", related_name="role_apis")
+    class Meta:
+        table = "role"
 
-class Dept(BaseModel, TimestampMixin):
-    name = fields.CharField(max_length=20, unique=True, description="部门名称", index=True)
-    desc = fields.CharField(max_length=500, null=True, blank=True, description="备注")
-    is_deleted = fields.BooleanField(default=False, description="软删除标记", index=True)
-    order = fields.IntField(default=0, description="排序", index=True)
-    parent_id = fields.IntField(default=0, max_length=10, description="父部门ID", index=True)
+class User(BaseModel, TimestampMixin):
+    username = fields.CharField(max_length=20, unique=True, description="用户名称", index=True)
+    alias = fields.CharField(max_length=30, null=True, description="姓名", index=True)
+    email = fields.CharField(max_length=255, unique=True, description="邮箱", index=True)
+    phone = fields.CharField(max_length=20, null=True, description="电话", index=True)
+    password = fields.CharField(max_length=128, null=True, description="密码")
+    is_active = fields.BooleanField(default=True, description="是否激活", index=True)
+    is_superuser = fields.BooleanField(default=False, description="是否为超级管理员", index=True)
+    last_login = fields.DatetimeField(null=True, description="最后登录时间", index=True)
+    roles = fields.ManyToManyField("models.Role", related_name="user_roles")
+    # dept_id = fields.IntField(null=True, description="部门ID", index=True)
 
     class Meta:
-        table = "dept"
+        table = "user"
 
+    class PydanticMeta:
+        # todo
+        # computed = ["full_name"]
+        ...
+
+class AudioFiles(BaseModel):
+    user = fields.ForeignKeyField("models.User", related_name="audio_files")
+    file_name = fields.CharField(max_length=255)
+    file_path = fields.CharField(max_length=255)
+    text_info = fields.TextField()
+    tone_name = fields.CharField(max_length=255,default=None,unique=True)
+    tone_avatar = fields.CharField(max_length=255,default=None)
+    cloned_voice = fields.BooleanField(default=False)
+    build_in = fields.BooleanField(default=False)
+    created_at = fields.DatetimeField(auto_now_add=True)
+    deleted_at = fields.DatetimeField(null=True)
+    tags = fields.ManyToManyField("models.Tags", related_name="audio_tags")
+
+    class Meta:
+        table = "audio_files"
+
+class Tags(BaseModel):
+    tag_name = fields.CharField(max_length=255, unique=True)
+    
+    class Meta:
+        table = "tags"
+
+class TTSOperations(BaseModel):
+    user = fields.ForeignKeyField("models.User", related_name="tts_operations")
+    input_text = fields.TextField()
+    voice = fields.ForeignKeyField("models.AudioFiles", related_name="tts_operations_as_voice", null=True)
+    output_audio_file = fields.ForeignKeyField("models.AudioFiles", related_name="tts_operations_as_output")
+    created_at = fields.DatetimeField(auto_now_add=True)
+    is_created = fields.BooleanField(default=False)
+
+    class Meta:
+        table = "tts_operations"
+
+class History(BaseModel):
+    user = fields.ForeignKeyField("models.User", related_name="history_user")
+    tts = fields.ForeignKeyField("models.TTSOperations", related_name="history_tts")
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "history"
 
 class DeptClosure(BaseModel, TimestampMixin):
     ancestor = fields.IntField(description="父代", index=True)

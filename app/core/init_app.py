@@ -1,7 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
-
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from app.api import api_router
 from app.controllers.user import UserCreate, user_controller
 from app.core.exceptions import (
@@ -19,9 +20,14 @@ from app.core.exceptions import (
 from app.models.admin import Menu
 from app.schemas.menus import MenuType
 from app.settings.config import settings
-
 from .middlewares import BackGroundTaskMiddleware, HttpAuditLogMiddleware
+from dotenv import load_dotenv
+import os
+import glob
 
+load_dotenv()
+
+temp_audio_save_path = os.getenv('TEMP_AUDIO_SAVE_PATH')
 
 def make_middlewares():
     middleware = [
@@ -44,7 +50,6 @@ def make_middlewares():
     ]
     return middleware
 
-
 def register_exceptions(app: FastAPI):
     app.add_exception_handler(DoesNotExist, DoesNotExistHandle)
     app.add_exception_handler(HTTPException, HttpExcHandle)
@@ -52,10 +57,8 @@ def register_exceptions(app: FastAPI):
     app.add_exception_handler(RequestValidationError, RequestValidationHandle)
     app.add_exception_handler(ResponseValidationError, ResponseValidationHandle)
 
-
 def register_routers(app: FastAPI, prefix: str = "/api"):
     app.include_router(api_router, prefix=prefix)
-
 
 async def init_superuser():
     user = await user_controller.model.exists()
@@ -70,111 +73,25 @@ async def init_superuser():
             )
         )
 
+def clean_up_temp_files():
+    # 定时清理临时文件的任务
+    print("Cleaning up temporary files...")
 
-async def init_menus():
-    menus = await Menu.exists()
-    if not menus:
-        parent_menu = await Menu.create(
-            menu_type=MenuType.CATALOG,
-            name="系统管理",
-            path="/system",
-            order=1,
-            parent_id=0,
-            icon="carbon:gui-management",
-            is_hidden=False,
-            component="Layout",
-            keepalive=False,
-            redirect="/system/user",
-        )
-        children_menu = [
-            Menu(
-                menu_type=MenuType.MENU,
-                name="用户管理",
-                path="user",
-                order=1,
-                parent_id=parent_menu.id,
-                icon="material-symbols:person-outline-rounded",
-                is_hidden=False,
-                component="/system/user",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="角色管理",
-                path="role",
-                order=2,
-                parent_id=parent_menu.id,
-                icon="carbon:user-role",
-                is_hidden=False,
-                component="/system/role",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="菜单管理",
-                path="menu",
-                order=3,
-                parent_id=parent_menu.id,
-                icon="material-symbols:list-alt-outline",
-                is_hidden=False,
-                component="/system/menu",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="API管理",
-                path="api",
-                order=4,
-                parent_id=parent_menu.id,
-                icon="ant-design:api-outlined",
-                is_hidden=False,
-                component="/system/api",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="部门管理",
-                path="dept",
-                order=5,
-                parent_id=parent_menu.id,
-                icon="mingcute:department-line",
-                is_hidden=False,
-                component="/system/dept",
-                keepalive=False,
-            ),
-            Menu(
-                menu_type=MenuType.MENU,
-                name="审计日志",
-                path="auditlog",
-                order=6,
-                parent_id=parent_menu.id,
-                icon="ph:clipboard-text-bold",
-                is_hidden=False,
-                component="/system/auditlog",
-                keepalive=False,
-            )
-        ]
-        await Menu.bulk_create(children_menu)
-        parent_menu = await Menu.create(
-            menu_type=MenuType.CATALOG,
-            name="一级菜单",
-            path="/",
-            order=2,
-            parent_id=0,
-            icon="mdi-fan-speed-1",
-            is_hidden=False,
-            component="Layout",
-            keepalive=False,
-            redirect="",
-        )
-        await Menu.create(
-            menu_type=MenuType.MENU,
-            name="一级菜单",
-            path="top-menu",
-            order=1,
-            parent_id=parent_menu.id,
-            icon="mdi-fan-speed-1",
-            is_hidden=False,
-            component="/top-menu",
-            keepalive=False,
-        )
+    # 获取临时文件夹中的所有文件
+    files = glob.glob(os.path.join(temp_audio_save_path, "*"))
+
+    # 遍历并删除每个文件
+    for file_path in files:
+        try:
+            os.remove(file_path)
+            print(f"Deleted {file_path}")
+        except Exception as e:
+            print(f"Error deleting {file_path}: {e}")
+
+async def init_scheduler(app: FastAPI):
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(clean_up_temp_files, CronTrigger(hour="*/1"))
+    scheduler.start()
+    app.state.scheduler = scheduler
+
+
