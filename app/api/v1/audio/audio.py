@@ -5,12 +5,13 @@ from fastapi import APIRouter, Body, File, HTTPException, Query,Form, UploadFile
 from fastapi.responses import FileResponse
 import httpx
 from tortoise.expressions import Q
-
+import asyncio
 from app.controllers.audio import audio_controller
 from app.schemas.base import Fail, Success, SuccessExtra
 from app.schemas.audio import *
 from dotenv import load_dotenv
 import os
+from app.utils.quene_handle import *
 
 load_dotenv() 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,16 @@ async def generate_audio(
         'tts': tts,
         'role': role
     }
+    if request_queue.full():
+        queue_size = request_queue.qsize()
+        wait_time = queue_size * 10  # 假设每个请求需要 10 秒
+        raise HTTPException(status_code=503, detail=f"服务繁忙，当前队列使用数: {queue_size}, 预计等待时间: {wait_time} 秒")
+    
+    # if get_gpu_usage() > gpu_usage_threshold:
+    #     raise HTTPException(status_code=503, detail="GPU 使用率过高，请稍后再试")
+    
+    request_queue.put(asyncio.current_task())
+    
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             response = await client.post(url) #data=payload
@@ -141,6 +152,17 @@ async def zero_shot_inference(
     url = "/api/inference/zero-shot"
     # 读取上传的音频文件并转换为合适的格式
     prompt = await audio_controller.get_prompt_by_name(tone_name)
+    
+    if request_queue.full():
+        queue_size = request_queue.qsize()
+        wait_time = queue_size * 10  # 假设每个请求需要 10 秒
+        raise HTTPException(status_code=503, detail=f"服务繁忙，当前队列使用数: {queue_size}, 预计等待时间: {wait_time} 秒")
+    
+    # if get_gpu_usage() > gpu_usage_threshold:
+    #     raise HTTPException(status_code=503, detail="GPU 使用率过高，请稍后再试")
+    
+    request_queue.put(asyncio.current_task())
+    
     try:
         files = {"audio": ("audio.wav", audio, "audio/wav")}
         data = {"tts": tts, "prompt": prompt}

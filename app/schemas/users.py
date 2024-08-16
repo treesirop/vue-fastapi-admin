@@ -15,7 +15,13 @@ class BaseUser(BaseModel):
     last_login: Optional[datetime]
     roles: Optional[list] = []
 
+class CusUserCreate(BaseModel):
+    username: str = Field(...),
+    password: str = Field(...),
+    phone: str = Field(...),
+    email: EmailStr = Field(example="admin@qq.com")
 
+    
 class UserCreate(BaseModel):
     email: EmailStr = Field(example="admin@qq.com")
     username: str = Field(example="admin")
@@ -23,7 +29,6 @@ class UserCreate(BaseModel):
     is_active: Optional[bool] = True
     is_superuser: Optional[bool] = False
     role_ids: Optional[List[int]] = []
-    # dept_id: Optional[int] = Field(0, description="部门ID")
 
     def create_dict(self):
         return self.model_dump(exclude_unset=True, exclude={"role_ids"})

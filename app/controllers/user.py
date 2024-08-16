@@ -6,7 +6,7 @@ from fastapi.exceptions import HTTPException
 from app.core.crud import CRUDBase
 from app.models.admin import User
 from app.schemas.login import CredentialsSchema
-from app.schemas.users import UserCreate, UserUpdate
+from app.schemas.users import CusUserCreate, UserCreate, UserUpdate
 from app.utils.password import get_password_hash, verify_password
 
 from .role import role_controller
@@ -19,14 +19,19 @@ class UserController(CRUDBase[User, UserCreate, UserUpdate]):
     async def get_by_email(self, email: str) -> Optional[User]:
         return await self.model.filter(email=email).first()
 
-    async def get_by_username(self, username: str) -> Optional[User]:
-        return await self.model.filter(username=username).first()
-
+    async def get_by_phone(self, phone: str) -> Optional[User]:
+        return await self.model.filter(phone=phone).first()
+    
     async def create_user(self, obj_in: UserCreate) -> User:
         obj_in.password = get_password_hash(password=obj_in.password)
         obj = await self.create(obj_in)
         return obj
 
+    async def create_customer_user(self,obj_in:CusUserCreate) -> User:
+        obj_in.password = get_password_hash(password=obj_in.password)
+        obj = await self.create(obj_in)
+        return obj
+    
     async def update_last_login(self, id: int) -> None:
         user = await self.model.get(id=id)
         user.last_login = datetime.now()

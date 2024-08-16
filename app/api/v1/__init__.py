@@ -10,10 +10,11 @@ from .users import users_router
 from .auditlog import auditlog_router
 from .audio import audio_router
 from .tone import tone_router
-
+from .register import register_router
 
 v1_router = APIRouter()
 
+v1_router.include_router(register_router,prefix="/register")
 v1_router.include_router(audio_router,prefix="/audio")
 v1_router.include_router(tone_router,prefix="/tone")
 v1_router.include_router(base_router, prefix="/base")

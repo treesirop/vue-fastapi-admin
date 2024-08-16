@@ -33,13 +33,14 @@ router = APIRouter()
 
 @router.post("/create_tone", summary="生成音色")
 async def create_tone(
-    tone_name: str = Form(...),
+    tone_name: str = Form(example="不能重复"),
     user_id: int = Form(...),
     text_info: str = Form(...),
     cloned_voice: bool = Form(default=True),
     build_in: bool = Form(default=False),
+    tag_names: List[str] = Body(default=[]),
     audio_file: UploadFile = File(...),
-    avatar_file: UploadFile = File(...)
+    avatar_file: UploadFile = File(...),
 ):
     try:
         # 检查文件类型
@@ -85,7 +86,10 @@ async def create_tone(
         }
         
         # 保存到数据库
-        await audio_controller.save_audio_to_db(audio_in)
+        audio_file_new = await audio_controller.save_audio_to_db(audio_in)
+        
+        # 添加标签
+        await audio_controller.add_tags_to_audio_file(audio_file_new.id, tag_names)
         
         return JSONResponse(content={"message": "音色创建成功", "filename": temp_file_name})
     except Exception as e:
@@ -112,11 +116,3 @@ async def tone_list(
     data = [await obj.to_dict(m2m=True) for obj in user_objs]
 
     return SuccessExtra(data=data, total=total, page=page, page_size=page_size)
-
-@router.post("/tags", summary="添加标签到音色")
-async def add_tags(audio_file_id: int, tag_names: List[str] = Body(...)):
-    try:
-        await audio_controller.add_tags_to_audio_file(audio_file_id, tag_names)
-        return {"msg": "Tags added successfully"}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {exc}")

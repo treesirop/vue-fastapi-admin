@@ -40,7 +40,7 @@ class Role(BaseModel, TimestampMixin):
         table = "role"
 
 class User(BaseModel, TimestampMixin):
-    username = fields.CharField(max_length=20, unique=True, description="用户名称", index=True)
+    username = fields.CharField(max_length=20, description="用户名称", index=True)
     alias = fields.CharField(max_length=30, null=True, description="姓名", index=True)
     email = fields.CharField(max_length=255, unique=True, description="邮箱", index=True)
     phone = fields.CharField(max_length=20, null=True, description="电话", index=True)
@@ -49,7 +49,6 @@ class User(BaseModel, TimestampMixin):
     is_superuser = fields.BooleanField(default=False, description="是否为超级管理员", index=True)
     last_login = fields.DatetimeField(null=True, description="最后登录时间", index=True)
     roles = fields.ManyToManyField("models.Role", related_name="user_roles")
-    # dept_id = fields.IntField(null=True, description="部门ID", index=True)
 
     class Meta:
         table = "user"
@@ -80,25 +79,6 @@ class Tags(BaseModel):
     
     class Meta:
         table = "tags"
-
-class TTSOperations(BaseModel):
-    user = fields.ForeignKeyField("models.User", related_name="tts_operations")
-    input_text = fields.TextField()
-    voice = fields.ForeignKeyField("models.AudioFiles", related_name="tts_operations_as_voice", null=True)
-    output_audio_file = fields.ForeignKeyField("models.AudioFiles", related_name="tts_operations_as_output")
-    created_at = fields.DatetimeField(auto_now_add=True)
-    is_created = fields.BooleanField(default=False)
-
-    class Meta:
-        table = "tts_operations"
-
-class History(BaseModel):
-    user = fields.ForeignKeyField("models.User", related_name="history_user")
-    tts = fields.ForeignKeyField("models.TTSOperations", related_name="history_tts")
-    created_at = fields.DatetimeField(auto_now_add=True)
-
-    class Meta:
-        table = "history"
 
 class DeptClosure(BaseModel, TimestampMixin):
     ancestor = fields.IntField(description="父代", index=True)
