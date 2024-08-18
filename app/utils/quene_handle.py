@@ -5,15 +5,15 @@ import pynvml
 CONCURRENT_LIMIT = 5
 request_queue = Queue(maxsize=CONCURRENT_LIMIT)
 
-# GPU 监控
+# # GPU 监控
 # pynvml.nvmlInit()
 # device_count = pynvml.nvmlDeviceGetCount()
 # gpu_usage_threshold = 80  # GPU 使用率阈值
 
-# def get_gpu_usage():
-#     handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # 假设只监控第一个 GPU
-#     util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-#     return util.gpu
+def get_gpu_usage():
+    handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # 假设只监控第一个 GPU
+    util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+    return util.gpu
 
 async def process_request(request_func, *args, **kwargs):
     try:
@@ -21,3 +21,10 @@ async def process_request(request_func, *args, **kwargs):
     finally:
         request_queue.get()
         request_queue.task_done()
+
+# 示例请求处理函数
+async def handle_request():
+    # 模拟请求处理
+    import asyncio
+    await asyncio.sleep(10)
+

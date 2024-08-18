@@ -52,7 +52,7 @@ class AudioController(CRUDBase[AudioFiles, AudioFileCreate, AudioFileFull]):
     
     async def get_audio_file_by_name(self, tone_name: str) -> bytes:
         audio_file = await self.model.get(tone_name=tone_name)
-        file_path= audio_file.file_path
+        file_path= os.path.join(audio_file.file_path,audio_file.file_name)
         try:
             with open(file_path, "rb") as file:
                 audio_content = file.read()
@@ -65,6 +65,10 @@ class AudioController(CRUDBase[AudioFiles, AudioFileCreate, AudioFileFull]):
     async def get_prompt_by_name(self, tone_name: str) -> bytes:
         audio_file = await self.model.get(tone_name=tone_name)
         return audio_file.text_info
+    
+    async def get_filename_by_name(self, tone_name: str) -> bytes:
+        audio_file = await self.model.get(tone_name=tone_name)
+        return audio_file.file_name
     
     async def add_tags_to_audio_file(self, audio_file_id: int, tag_names: list):
         audio_file = await self.get(id=audio_file_id)

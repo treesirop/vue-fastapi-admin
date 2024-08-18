@@ -1,20 +1,27 @@
+import io
 import logging
 import uuid
 
 from fastapi import APIRouter, Body, File, HTTPException, Query,Form, UploadFile
 from fastapi.responses import FileResponse
 import httpx
+import aiohttp
+import numpy as np
+import torch
+import torchaudio
 from tortoise.expressions import Q
 import asyncio
+from aiohttp import FormData
 from app.controllers.audio import audio_controller
 from app.schemas.base import Fail, Success, SuccessExtra
 from app.schemas.audio import *
 from dotenv import load_dotenv
 import os
 from app.utils.quene_handle import *
-
+# 配置日志记录器
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 load_dotenv() 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 server_ip_cosy = os.getenv('SERVER_IP_COSY')
 temp_audio_save_path = os.getenv('TEMP_AUDIO_SAVE_PATH')
 final_audio_save_path=os.getenv('FINAL_AUDIO_SAVE_PATH') 
@@ -47,8 +54,7 @@ async def generate_audio(
     tts: str = Form(...),
     role: str = Form(default="中文女")
 ):
-    # url = f"https://{server_ip_cosy}/api/inference/sft"
-    url = "http://127.0.0.1:8888/generate_audio"
+    url = f"http://{server_ip_cosy}/api/inference/sft"
     payload = {
         'tts': tts,
         'role': role
@@ -58,17 +64,23 @@ async def generate_audio(
         wait_time = queue_size * 10  # 假设每个请求需要 10 秒
         raise HTTPException(status_code=503, detail=f"服务繁忙，当前队列使用数: {queue_size}, 预计等待时间: {wait_time} 秒")
     
-    # if get_gpu_usage() > gpu_usage_threshold:
-    #     raise HTTPException(status_code=503, detail="GPU 使用率过高，请稍后再试")
-    
     request_queue.put(asyncio.current_task())
     
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.post(url) #data=payload
-            response.raise_for_status()
-            audio_content = response.content
-            
+        logging.info(f"Sending POST request to {url} with payload: {payload}")
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(url, data=payload)
+            content = await response.read()
+            logging.info(f"Response content length: {len(content)}")
+            buffer_array = np.frombuffer(content, dtype=np.float32)  # 假设音频数据是 float32 类型
+
+            # 将 NumPy 数组转换为 2D Tensor
+            buffer_tensor = torch.from_numpy(buffer_array).reshape(1, -1)  # 假设是单声道音频
+            buffer = io.BytesIO()
+            torchaudio.save(buffer, buffer_tensor, 22050, format="wav")
+
+            buffer.seek(0)
+            audio_content = buffer.read(-1)
             # 生成唯一的文件名
             file_id = str(uuid.uuid4())
             temp_file_name = f"{file_id}.wav"
@@ -84,15 +96,15 @@ async def generate_audio(
                 "tts": tts
             }
             
-    except httpx.RequestError as exc:
-        logging.error(f"Request error: {exc}")
-        raise HTTPException(status_code=500, detail=f"Request error: {exc}")
     except httpx.HTTPStatusError as exc:
         logging.error(f"HTTP error: {exc}")
         raise HTTPException(status_code=exc.response.status_code, detail=f"HTTP error: {exc}")
     except Exception as exc:
         logging.error(f"Unexpected error: {exc}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {exc}")
+    finally:
+        request_queue.get()
+        request_queue.task_done()
 
 @router.get("/previewAudio", summary="预览音频")
 async def preview_audio(audio_id: str):
@@ -118,9 +130,10 @@ async def save_audio(
         final_file_path = os.path.join(final_audio_save_path, temp_file_name)
         os.rename(temp_file_path, final_file_path)
         
+        tone_id = str(uuid.uuid4())
         audioin = {
             "user_id": audio_in.user_id,
-            "tone_name": "",
+            "tone_name": tone_id,
             "file_name": temp_file_name,
             "file_path": final_file_path,
             "text_info": audio_in.text_info,
@@ -148,11 +161,11 @@ async def zero_shot_inference(
     ):
     # 通过audio_file_name获取到 音频数据
     audio = await audio_controller.get_audio_file_by_name(tone_name)
-    # url = f"https://{settings.SERVER_IP_COSY}/api/inference/zero-shot"
-    url = "/api/inference/zero-shot"
+    url = f"http://{server_ip_cosy}/api/inference/zero-shot"
+    
     # 读取上传的音频文件并转换为合适的格式
     prompt = await audio_controller.get_prompt_by_name(tone_name)
-    
+    tone_file_name = await audio_controller.get_filename_by_name(tone_name)
     if request_queue.full():
         queue_size = request_queue.qsize()
         wait_time = queue_size * 10  # 假设每个请求需要 10 秒
@@ -164,21 +177,37 @@ async def zero_shot_inference(
     request_queue.put(asyncio.current_task())
     
     try:
-        files = {"audio": ("audio.wav", audio, "audio/wav")}
+        files = {"audio": (tone_file_name, audio, "audio/wav")}
         data = {"tts": tts, "prompt": prompt}
-        
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            response = await client.post(url, data=data, files=files)
-            response.raise_for_status()
-            audio_content = response.content
-        # 生成唯一的文件名
-        file_id = str(uuid.uuid4())
-        temp_file_name = f"{file_id}.wav"
-        temp_file_path = os.path.join(temp_audio_save_path, temp_file_name)
-        
-        # 保存临时音频文件到服务器
-        with open(temp_file_path, "wb") as f:
-            f.write(audio_content)
+        form = FormData()
+
+        for key, value in data.items():
+            form.add_field(key, value)
+
+        for key, file_info in files.items():
+            filename, content, content_type = file_info  # 解包元组
+            form.add_field(key, content, filename=filename, content_type=content_type)
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(url, data=form)
+            content = await response.read()
+            logging.info(f"Response content length: {len(content)}")
+            buffer_array = np.frombuffer(content, dtype=np.float32)  # 假设音频数据是 float32 类型
+
+            # 将 NumPy 数组转换为 2D Tensor
+            buffer_tensor = torch.from_numpy(buffer_array).reshape(1, -1)  # 假设是单声道音频
+            buffer = io.BytesIO()
+            torchaudio.save(buffer, buffer_tensor, 22050, format="wav")
+
+            buffer.seek(0)
+            audio_content = buffer.read(-1)
+            # 生成唯一的文件名
+            file_id = str(uuid.uuid4())
+            temp_file_name = f"{file_id}.wav"
+            temp_file_path = os.path.join(temp_audio_save_path, temp_file_name)
+            
+            # 保存临时音频文件到服务器
+            with open(temp_file_path, "wb") as f:
+                f.write(audio_content)
         
         # 返回文件 ID 
         return {
@@ -186,12 +215,72 @@ async def zero_shot_inference(
             "tts": tts,
             "prompt":prompt
         }   
-    except httpx.RequestError as exc:
-        logging.error(f"Request error: {exc}")
-        raise HTTPException(status_code=500, detail=f"Request error: {exc}")
+    
     except httpx.HTTPStatusError as exc:
         logging.error(f"HTTP error: {exc}")
         raise HTTPException(status_code=exc.response.status_code, detail=f"HTTP error: {exc}")
     except Exception as exc:
         logging.error(f"Unexpected error: {exc}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {exc}")
+    finally:
+        request_queue.get()
+        request_queue.task_done()
+    
+@router.post("/generate_instruct", summary="instruct生成音频")
+async def generate_audio_instruct(
+    tts: str = Form(...),
+    role: str = Form(default="中文女"),
+    instruct: str = Form(...)
+):
+    url = f"http://{server_ip_cosy}/api/inference/instruct"
+    payload = {
+        'tts': tts,
+        'role': role,
+        'instruct': instruct
+    }
+    if request_queue.full():
+        queue_size = request_queue.qsize()
+        wait_time = queue_size * 10  # 假设每个请求需要 10 秒
+        raise HTTPException(status_code=503, detail=f"服务繁忙，当前队列使用数: {queue_size}, 预计等待时间: {wait_time} 秒")
+    
+    request_queue.put(asyncio.current_task())
+    
+    try:
+        logging.info(f"Sending POST request to {url} with payload: {payload}")
+        async with aiohttp.ClientSession() as session:
+            response = await session.post(url, data=payload)
+            content = await response.read()
+            logging.info(f"Response content length: {len(content)}")
+            buffer_array = np.frombuffer(content, dtype=np.float32)  # 假设音频数据是 float32 类型
+            writable_buffer_array = np.copy(buffer_array)
+            # 将 NumPy 数组转换为 2D Tensor
+            buffer_tensor = torch.from_numpy(writable_buffer_array).reshape(1, -1)  # 假设是单声道音频
+            buffer = io.BytesIO()
+            torchaudio.save(buffer, buffer_tensor, 22050, format="wav")
+
+            buffer.seek(0)
+            audio_content = buffer.read(-1)
+            # 生成唯一的文件名
+            file_id = str(uuid.uuid4())
+            temp_file_name = f"{file_id}.wav"
+            temp_file_path = os.path.join(temp_audio_save_path, temp_file_name)
+            
+            # 保存临时音频文件到服务器
+            with open(temp_file_path, "wb") as f:
+                f.write(audio_content)
+            
+            # 返回文件 ID 
+            return {
+                "audio_id": file_id,
+                "tts": tts
+            }
+            
+    except httpx.HTTPStatusError as exc:
+        logging.error(f"HTTP error: {exc}")
+        raise HTTPException(status_code=exc.response.status_code, detail=f"HTTP error: {exc}")
+    except Exception as exc:
+        logging.error(f"Unexpected error: {exc}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {exc}")
+    finally:
+        request_queue.get()
+        request_queue.task_done()

@@ -63,7 +63,7 @@ class AudioFiles(BaseModel):
     file_name = fields.CharField(max_length=255)
     file_path = fields.CharField(max_length=255)
     text_info = fields.TextField()
-    tone_name = fields.CharField(max_length=255,default=None,unique=True)
+    tone_name = fields.CharField(max_length=255,default=None,unique=True,null=True)
     tone_avatar = fields.CharField(max_length=255,default=None)
     cloned_voice = fields.BooleanField(default=False)
     build_in = fields.BooleanField(default=False)
